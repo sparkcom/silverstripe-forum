@@ -1,14 +1,21 @@
 <?php
+namespace SilverStripe\Forum\Extension;
+use SilverStripe\Core\Config\Config;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\ORM\Connect\MySQLQuery;
+use SilverStripe\ORM\DataExtension;
+use SilverStripe\Security\Security;
+
 class ForumSpamPostExtension extends DataExtension
 {
 
-    public function augmentSQL(SQLQuery &$query)
+    public function augmentSQL(MySQLQuery &$query)
     {
-        if (Config::inst()->forClass('Post')->allow_reading_spam) {
+        if (Config::inst()->forClass(Post::class)->allow_reading_spam) {
             return;
         }
 
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
         $forum = $this->owner->Forum();
 
         // Do Status filtering
