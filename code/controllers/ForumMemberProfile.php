@@ -4,7 +4,16 @@
  *
  * @package forum
  */
-class ForumMemberProfile extends Page_Controller
+namespace SilverStripe\Forum\controller;
+
+use SilverStripe\Core\Convert;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\Forum\Page\ForumHolder;
+use SilverStripe\ORM\FieldType\DBField;
+use SilverStripe\Security\Member;
+use SilverStripe\View\Requirements;
+
+class ForumMemberProfile extends \PageController
 {
 
     private static $allowed_actions = array(
