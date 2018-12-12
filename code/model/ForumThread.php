@@ -6,6 +6,19 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Model;
+use SilverStripe\Control\Controller;
+use SilverStripe\Control\Director;
+use SilverStripe\Control\Email\Email;
+use SilverStripe\Core\Convert;
+use SilverStripe\Forum\Page\Forum;
+use SilverStripe\ORM\Connect\MySQLQuery;
+use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DB;
+use SilverStripe\ORM\FieldType\DBDatetime;
+use SilverStripe\ORM\FieldType\DBField;
+use SilverStripe\Security\Member;
+use SilverStripe\Security\Security;
 
 class ForumThread extends DataObject
 {
@@ -19,11 +32,11 @@ class ForumThread extends DataObject
     );
 
     private static $has_one = array(
-        'Forum' => 'Forum'
+        'Forum' => Forum::class
     );
 
     private static $has_many = array(
-        'Posts' => 'Post'
+        'Posts' => Post::class
     );
 
     private static $defaults = array(
@@ -38,6 +51,7 @@ class ForumThread extends DataObject
         'IsGlobalSticky' => true
     );
 
+    private static $table_name = 'ForumThread';
     /**
      * @var null|boolean Per-request cache, whether we should display signatures on a post.
      */
@@ -49,7 +63,7 @@ class ForumThread extends DataObject
     public function canPost($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return ($this->Forum()->canPost($member) && !$this->IsReadOnly);
     }
@@ -60,7 +74,7 @@ class ForumThread extends DataObject
     public function canModerate($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->Forum()->canModerate($member);
     }
@@ -71,7 +85,7 @@ class ForumThread extends DataObject
     public function canView($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->Forum()->canView($member);
     }
@@ -82,7 +96,7 @@ class ForumThread extends DataObject
     public function canEdit($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->canModerate($member);
     }
@@ -94,7 +108,7 @@ class ForumThread extends DataObject
     public function canDelete($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->canModerate($member);
     }
@@ -105,7 +119,7 @@ class ForumThread extends DataObject
     public function canCreate($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->canPost($member);
     }
@@ -156,7 +170,7 @@ class ForumThread extends DataObject
      */
     public function getNumPosts()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new MySQLQuery();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT("Post"."ID")');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -173,11 +187,13 @@ class ForumThread extends DataObject
      */
     public function incNumViews()
     {
-        if (Session::get('ForumViewed-' . $this->ID)) {
+        $session = Controller::curr()->getRequest()->getSession();
+
+        if ($session::get('ForumViewed-' . $this->ID)) {
             return false;
         }
 
-        Session::set('ForumViewed-' . $this->ID, 'true');
+        $session::set('ForumViewed-' . $this->ID, 'true');
 
         $this->NumViews++;
         $SQL_numViews = Convert::raw2sql($this->NumViews);
@@ -209,7 +225,7 @@ class ForumThread extends DataObject
      */
     public function getHasSubscribed()
     {
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
 
         return ($member) ? ForumThread_Subscription::already_subscribed($this->ID, $member->ID) : false;
     }
@@ -264,14 +280,14 @@ class ForumThread_Subscription extends DataObject
 {
 
     private static $db = array(
-        "LastSent" => "SS_Datetime"
+        "LastSent" => DBDatetime::class
     );
 
     private static $has_one = array(
-        "Thread" => "ForumThread",
-        "Member" => "Member"
+        "Thread" => ForumThread::class,
+        "Member" => Member::class
     );
-
+    private static $table_name = 'ForumThread_Subscription';
     /**
      * Checks to see if a Member is already subscribed to this thread
      *
@@ -283,7 +299,7 @@ class ForumThread_Subscription extends DataObject
     static function already_subscribed($threadID, $memberID = null)
     {
         if (!$memberID) {
-            $memberID = Member::currentUserID();
+            $memberID = Security::getCurrentUser()? Security::getCurrentUser()->ID : '0';
         }
         $SQL_threadID = Convert::raw2sql($threadID);
         $SQL_memberID = Convert::raw2sql($memberID);
