@@ -1,4 +1,10 @@
 <?php
+namespace SilverStripe\Forum\fields;
+
+use SilverStripe\Forms\CheckboxField;
+use SilverStripe\Forms\CompositeField;
+use SilverStripe\Forms\FieldList;
+use SilverStripe\UserForms\Model\EditableFormField\EditableDateField\FormField;
 
 class CheckableOption extends CompositeField
 {
