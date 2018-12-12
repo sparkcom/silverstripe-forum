@@ -7,13 +7,44 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Extension;
+
+use SilverStripe\Assets\Image;
+use SilverStripe\Core\Config\Config;
+use SilverStripe\Core\Extension;
+use SilverStripe\Forms\CheckboxSetField;
+use SilverStripe\Forms\CompositeField;
+use SilverStripe\Forms\ConfirmedPasswordField;
+use SilverStripe\Forms\DropdownField;
+use SilverStripe\Forms\EmailField;
+use SilverStripe\Forms\FieldList;
+use SilverStripe\Forms\FileField;
+use SilverStripe\Forms\Form;
+use SilverStripe\Forms\HeaderField;
+use SilverStripe\Forms\LiteralField;
+use SilverStripe\Forms\ReadonlyField;
+use SilverStripe\Forms\RequiredFields;
+use SilverStripe\Forms\TextField;
+use SilverStripe\Forum\fields\CheckableOption;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\Forum\Page\Forum;
+use SilverStripe\Forum\Page\ForumHolder;
+use SilverStripe\i18n\i18n;
+use SilverStripe\ORM\Connect\MySQLQuery;
+use SilverStripe\ORM\DataExtension;
+use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DB;
+use SilverStripe\Security\Permission;
+use SilverStripe\Security\Security;
+use SilverStripe\View\Requirements;
+
 class ForumRole extends DataExtension
 {
 
     /**
      * Edit the given query object to support queries for this extension
      */
-    public function augmentSQL(SQLQuery &$query)
+    public function augmentSQL(MySQLQuery &$query)
     {
     }
 
@@ -23,7 +54,7 @@ class ForumRole extends DataExtension
      */
     public function augmentDatabase()
     {
-        $exist = DB::tableList();
+        $exist = DB::table_list();
         if (!empty($exist) && array_search('ForumMember', $exist) !== false) {
             DB::query("UPDATE \"Member\", \"ForumMember\" " .
                 "SET \"Member\".\"ClassName\" = 'Member'," .
@@ -57,22 +88,22 @@ class ForumRole extends DataExtension
         'CityPublic' => 'Boolean',
         'CountryPublic' => 'Boolean',
         'EmailPublic' => 'Boolean',
-        'LastViewed' => 'SS_Datetime',
+        'LastViewed' => 'Datetime',
         'Signature' => 'Text',
         'ForumStatus' => 'Enum("Normal, Banned, Ghost", "Normal")',
         'SuspendedUntil' => 'Date'
     );
 
     private static $has_one = array(
-        'Avatar' => 'Image'
+        'Avatar' => Image::class
     );
 
     private static $has_many = array(
-        'ForumPosts' => 'Post'
+        'ForumPosts' => Post::class
     );
 
     private static $belongs_many_many = array(
-        'ModeratedForums' => 'Forum'
+        'ModeratedForums' => Forum::class
     );
 
     private static $defaults = array(
@@ -144,7 +175,7 @@ class ForumRole extends DataExtension
      */
     public function FullCountry()
     {
-        $locale = new Zend_Locale();
+        $locale = i18n::get_locale();
         $locale->setLocale($this->owner->Country);
         return $locale->getRegion();
     }
@@ -186,11 +217,11 @@ class ForumRole extends DataExtension
      */
     public function getForumFields($showIdentityURL = false, $addmode = false)
     {
-        $gravatarText = (DataObject::get_one("ForumHolder", "\"AllowGravatars\" = 1")) ? '<small>'. _t('ForumRole.CANGRAVATAR', 'If you use Gravatars then leave this blank') .'</small>' : "";
+        $gravatarText = (DataObject::get_one(ForumHolder::class, "\"AllowGravatars\" = 1")) ? '<small>'. _t('ForumRole.CANGRAVATAR', 'If you use Gravatars then leave this blank') .'</small>' : "";
 
         //Sets the upload folder to the Configurable one set via the ForumHolder or overridden via Config::inst()->update().
         $avatarField = new FileField('Avatar', _t('ForumRole.AVATAR', 'Avatar Image') .' '. $gravatarText);
-        $avatarField->setFolderName(Config::inst()->get('ForumHolder', 'avatars_folder'));
+        $avatarField->setFolderName(Config::inst()->get(ForumHolder::class , 'avatars_folder'));
         $avatarField->getValidator()->setAllowedExtensions(array('jpg', 'jpeg', 'gif', 'png'));
 
         $personalDetailsFields = new CompositeField(
@@ -258,9 +289,9 @@ class ForumRole extends DataExtension
     public function getForumValidator($needPassword = true)
     {
         if ($needPassword) {
-            $validator = new RequiredFields("Nickname", "Email", "Password");
+            $validator = new RequiredFields(["Nickname", "Email", "Password"]);
         } else {
-            $validator = new RequiredFields("Nickname", "Email");
+            $validator = new RequiredFields(["Nickname", "Email"]);
         }
         $this->owner->extend('updateForumValidator', $validator);
 
@@ -291,7 +322,7 @@ class ForumRole extends DataExtension
     public function IsSuspended()
     {
         if ($this->owner->SuspendedUntil) {
-            return strtotime(SS_Datetime::now()->Format('Y-m-d')) < strtotime($this->owner->SuspendedUntil);
+            return strtotime(date('Y-m-d')) < strtotime($this->owner->SuspendedUntil);
         } else {
             return false;
         }
@@ -304,7 +335,7 @@ class ForumRole extends DataExtension
 
     public function IsGhost()
     {
-        return $this->owner->ForumStatus == 'Ghost' && $this->owner->ID !== Member::currentUserID();
+        return $this->owner->ForumStatus == 'Ghost' && Security::getCurrentUser() && $this->owner->ID !== Security::getCurrentUser()->ID;
     }
 
     /**
@@ -315,10 +346,12 @@ class ForumRole extends DataExtension
     public function canEdit($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member =Security::getCurrentUser();
         }
 
-        if ($this->owner->ID == Member::currentUserID()) {
+        if(!$member) return false;
+
+        if ($this->owner->ID ==Security::getCurrentUser()->ID) {
             return true;
         }
 
