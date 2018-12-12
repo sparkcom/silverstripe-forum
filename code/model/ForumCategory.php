@@ -9,6 +9,14 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Model;
+
+use SilverStripe\Forms\DropdownField;
+use SilverStripe\Forms\FieldList;
+use SilverStripe\Forms\TextField;
+use SilverStripe\Forum\Page\Forum;
+use SilverStripe\Forum\Page\ForumHolder;
+use SilverStripe\ORM\DataObject;
 
 class ForumCategory extends DataObject
 {
@@ -19,15 +27,17 @@ class ForumCategory extends DataObject
     );
     
     private static $has_one = array(
-        'ForumHolder' => 'ForumHolder'
+        'ForumHolder' => ForumHolder::class
     );
     
     private static $has_many = array(
-        'Forums' => 'Forum'
+        'Forums' => Forum::class
     );
         
     private static $default_sort = "\"StackableOrder\" DESC";
-    
+
+    private static $table_name = 'ForumCategory';
+
     /**
      * Get the fields for the category edit/ add
      * in the complex table field popup window.
