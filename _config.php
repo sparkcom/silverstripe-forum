@@ -1,3 +1,3 @@
 <?php
 
-BBCodeParser::enable_smilies();
+//BBCodeParser::enable_smilies();
