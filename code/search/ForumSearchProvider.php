@@ -5,7 +5,7 @@
  *
  * @package forum
  */
-
+namespace SilverStripe\Forum\Search;
 interface ForumSearchProvider
 {
     
