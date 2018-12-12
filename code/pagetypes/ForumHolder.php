@@ -7,8 +7,53 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Page;
 
-class ForumHolder extends Page
+use SilverStripe\Control\Controller;
+use SilverStripe\Control\HTTP;
+use SilverStripe\Control\RSS\RSSFeed;
+use SilverStripe\Core\Convert;
+use SilverStripe\Dev\Deprecation;
+use SilverStripe\Dev\SapphireTest;
+use SilverStripe\Forms\CheckboxField;
+use SilverStripe\Forms\DropdownField;
+use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldAddNewButton;
+use SilverStripe\Forms\GridField\GridFieldButtonRow;
+use SilverStripe\Forms\GridField\GridFieldConfig;
+use SilverStripe\Forms\GridField\GridFieldDataColumns;
+use SilverStripe\Forms\GridField\GridFieldDeleteAction;
+use SilverStripe\Forms\GridField\GridFieldDetailForm;
+use SilverStripe\Forms\GridField\GridFieldEditButton;
+use SilverStripe\Forms\GridField\GridFieldPaginator;
+use SilverStripe\Forms\GridField\GridFieldSortableHeader;
+use SilverStripe\Forms\GridField\GridFieldViewButton;
+use SilverStripe\Forms\HeaderField;
+use SilverStripe\Forms\HTMLEditor\HTMLEditorField;
+use SilverStripe\Forms\LiteralField;
+use SilverStripe\Forms\OptionsetField;
+use SilverStripe\Forms\TextField;
+use SilverStripe\Forum\Model\ForumCategory;
+use SilverStripe\Forum\Model\ForumThread;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\Forum\Search\ForumSearch;
+use SilverStripe\ORM\ArrayList;
+
+use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DB;
+use SilverStripe\ORM\FieldType\DBField;
+
+use SilverStripe\ORM\PaginatedList;
+use SilverStripe\ORM\Queries\SQLSelect;
+
+use SilverStripe\Security\Group;
+use SilverStripe\Security\Member;
+use SilverStripe\Security\Security;
+use SilverStripe\Versioned\Versioned;
+use SilverStripe\View\Parsers\HTMLValue;
+use SilverStripe\View\Requirements;
+
+class ForumHolder extends \Page
 {
 
     private static $avatars_folder = 'forum/avatars/';
@@ -35,10 +80,10 @@ class ForumHolder extends Page
     private static $has_one = array();
 
     private static $has_many = array(
-        "Categories" => "ForumCategory"
+        "Categories" => ForumCategory::class
     );
 
-    private static $allowed_children = array('Forum');
+    private static $allowed_children = array( Forum::class);
 
     private static $defaults = array(
         "HolderSubtitle" => "Welcome to our forum!",
@@ -50,7 +95,7 @@ class ForumHolder extends Page
         "ProfileModify" => "<p>Thanks, your member profile has been modified.</p>",
         "ProfileAdd" => "<p>Thanks, you are now signed up to the forum.</p>",
     );
-
+    private static $table_name = 'ForumHolder';
     /**
      * If the user has spam protection enabled and setup then we can provide spam
      * prevention for the forum. This stores whether we actually want the registration
@@ -102,7 +147,7 @@ class ForumHolder extends Page
             $fields->addFieldsToTab("Root.Settings", array(
                 CheckboxField::create("DisplaySignatures", "Display Member Signatures?"),
                 CheckboxField::create("ShowInCategories", "Show Forums In Categories?"),
-                CheckboxField::create("AllowGravatars", "Allow <a href='http://www.gravatar.com/' target='_blank'>Gravatars</a>?"),
+                CheckboxField::create("AllowGravatars",  HTMLValue::create("Allow <a href='http://www.gravatar.com/' target='_blank'>Gravatars</a>?")),
                 DropdownField::create("GravatarType", "Gravatar Type", array(
                     "standard" => _t('Forum.STANDARD', 'Standard'),
                     "identicon" => _t('Forum.IDENTICON', 'Identicon'),
@@ -158,7 +203,7 @@ class ForumHolder extends Page
     public function canPost($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
 
         if ($this->CanPostType == "NoOne") {
@@ -223,7 +268,7 @@ class ForumHolder extends Page
      * a breadcrumb to get back to the ForumHolder page.
      * @return string
      */
-    public function Breadcrumbs($maxDepth = 20, $unlinked = false, $stopAtPageType = false, $showHidden = false)
+    public function Breadcrumbs($maxDepth = 20, $unlinked = false, $stopAtPageType = false, $showHidden = false, $delimiter = '&raquo;')
     {
         if (isset($this->urlParams['Action'])) {
             switch ($this->urlParams['Action']) {
@@ -245,7 +290,7 @@ class ForumHolder extends Page
      */
     public function getNumPosts()
     {
-            $sqlQuery = new SQLQuery();
+            $sqlQuery = new SQLSelect();
             $sqlQuery->setFrom('"Post"');
             $sqlQuery->setSelect('COUNT("Post"."ID")');
             $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -263,7 +308,7 @@ class ForumHolder extends Page
      */
     public function getNumTopics()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT(DISTINCT("ThreadID"))');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -281,7 +326,7 @@ class ForumHolder extends Page
      */
     public function getNumAuthors()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT(DISTINCT("AuthorID"))');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -325,7 +370,7 @@ class ForumHolder extends Page
         return Member::get()
             ->leftJoin('Group_Members', '"Member"."ID" = "Group_Members"."MemberID"')
             ->filter('GroupID', $groupIDs)
-            ->where('"Member"."LastViewed" > ' . DB::getConn()->datetimeIntervalClause('NOW', '-15 MINUTE'))
+            ->where('"Member"."LastViewed" > ' . DB::get_conn()->datetimeIntervalClause('NOW', '-15 MINUTE'))
             ->sort('"Member"."FirstName", "Member"."Surname"');
     }
 
@@ -445,7 +490,8 @@ class ForumHolder extends Page
             $stage = Versioned::get_live_stage();
         }
 
-        if ((class_exists('SapphireTest', false) && SapphireTest::is_running_test())
+      //  if ((class_exists(SapphireTest::class, false) && SapphireTest::is_running_test())
+        if ((class_exists(SapphireTest::class, false) && false)
             || $stage == "Stage"
         ) {
             return "SiteTree";
@@ -469,7 +515,8 @@ class ForumHolder extends Page
             return false;
         }
 
-        return Authenticator::is_registered("OpenIDAuthenticator");
+        return false;
+       // return Authenticator::is_registered("OpenIDAuthenticator");
     }
 
 
@@ -621,7 +668,7 @@ class ForumHolder extends Page
 }
 
 
-class ForumHolder_Controller extends Page_Controller
+class ForumHolder_Controller extends \PageController
 {
 
     private static $allowed_actions = array(
@@ -644,11 +691,12 @@ class ForumHolder_Controller extends Page_Controller
 
         RSSFeed::linkToFeed($this->Link("rss"), _t('ForumHolder.POSTSTOALLFORUMS', "Posts to all forums"));
 
+        $session = $this->getRequest()->getSession();
         // Set the back url
         if (isset($_SERVER['REQUEST_URI'])) {
-            Session::set('BackURL', $_SERVER['REQUEST_URI']);
+            $session->set('BackURL', $_SERVER['REQUEST_URI']);
         } else {
-            Session::set('BackURL', $this->Link());
+            $session->set('BackURL', $this->Link());
         }
     }
 
@@ -758,7 +806,7 @@ class ForumHolder_Controller extends Page_Controller
                 $threads->setPageLimits($start, $limit, $threadsQuery->unlimitedRowCount());
             }
         } elseif ($method == 'views') {
-            $threads = DataObject::get('ForumThread', '', "\"NumViews\" DESC", '', "$start,$limit");
+            $threads = DataObject::get(ForumThread::class, '', "\"NumViews\" DESC", '', "$start,$limit");
         }
 
         return array(
@@ -776,9 +824,10 @@ class ForumHolder_Controller extends Page_Controller
      */
     public function login()
     {
-        Session::set('Security.Message.message', _t('Forum.CREDENTIALS'));
-        Session::set('Security.Message.type', 'status');
-        Session::set("BackURL", $this->Link());
+       $session = $this->getRequest()->getSession();
+        $session->set('Security.Message.message', _t('Forum.CREDENTIALS'));
+         $session->set('Security.Message.type', 'status');
+        $session->set("BackURL", $this->Link());
 
         $this->redirect('Security/login');
     }
@@ -786,7 +835,7 @@ class ForumHolder_Controller extends Page_Controller
 
     public function logout()
     {
-        if ($member = Member::currentUser()) {
+        if ($member =Security::getCurrentUser()) {
             $member->logOut();
         }
 
