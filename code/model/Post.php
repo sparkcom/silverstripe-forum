@@ -6,6 +6,19 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Model;
+use SilverStripe\Assets\File;
+use SilverStripe\Control\Director;
+use SilverStripe\Control\HTTPRequest;
+use SilverStripe\Core\Convert;
+use SilverStripe\Forum\Page\Forum;
+use SilverStripe\GraphQL\Controller;
+use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DB;
+use SilverStripe\Security\Member;
+use SilverStripe\Security\Permission;
+use SilverStripe\Security\Security;
+use SilverStripe\Security\SecurityToken;
 
 class Post extends DataObject
 {
@@ -16,20 +29,20 @@ class Post extends DataObject
     );
 
     private static $casting = array(
-        "Updated" => "SS_Datetime",
+        "Updated" => "Datetime",
         "RSSContent" => "HTMLText",
         "RSSAuthor" => "Varchar",
         "Content" => "HTMLText"
     );
 
     private static $has_one = array(
-        "Author" => "Member",
-        "Thread" => "ForumThread",
-        "Forum" => "Forum" // denormalized data but used for read speed
+        "Author" => Member::class,
+        "Thread" => ForumThread::class,
+        "Forum" => Forum::class // denormalized data but used for read speed
     );
 
     private static $has_many = array(
-        "Attachments" => "Post_Attachment"
+        "Attachments" => Post_Attachment::class
     );
 
     private static $summary_fields = array(
@@ -40,6 +53,7 @@ class Post extends DataObject
         "Forum.Title" => "Forum"
     );
 
+    private static $table_name = 'Post';
     /**
      * Update all the posts to have a forum ID of their thread ID.
      */
@@ -77,10 +91,10 @@ class Post extends DataObject
     /**
      * Check if user can see the post
      */
-    public function canView($member = null)
+    public function canView($member = null, $context = array())
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
 
         if ($this->Author()->ForumStatus != 'Normal') {
@@ -95,10 +109,10 @@ class Post extends DataObject
     /**
      * Check if user can edit the post (only if it's his own, or he's an admin user)
      */
-    public function canEdit($member = null)
+    public function canEdit( $member = null, $context = array())
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
 
         if ($member) {
@@ -120,10 +134,10 @@ class Post extends DataObject
      * Follow edit permissions for this, but additionally allow moderation even
      * if the thread is marked as readonly.
      */
-    public function canDelete($member = null)
+    public function canDelete( $member = null , $context = array())
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         if ($this->canEdit($member)) {
             return true;
@@ -135,10 +149,10 @@ class Post extends DataObject
     /**
      * Check if user can add new posts - hook up into canPost.
      */
-    public function canCreate($member = null)
+    public function canCreate( $member = null, $context = array())
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return $this->Thread()->canPost($member);
     }
@@ -264,7 +278,7 @@ class Post extends DataObject
     public function MarkAsSpamLink()
     {
         if ($this->Thread()->canModerate()) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
             if ($member->ID != $this->AuthorID) {
                 $url = Controller::join_links($this->Forum()->Link('markasspam'), $this->ID);
                 $token = SecurityToken::inst();
@@ -351,12 +365,13 @@ class Post_Attachment extends File
 {
 
     private static $has_one = array(
-        "Post" => "Post"
+        "Post" => Post::class
     );
 
     private static $defaults = array(
         'ShowInSearch' => 0
     );
+    private static $table_name = 'Post_Attachment';
 
     /**
      * Can a user delete this attachment
@@ -366,7 +381,7 @@ class Post_Attachment extends File
     public function canDelete($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return ($this->Post()) ? $this->Post()->canDelete($member) : true;
     }
@@ -379,7 +394,7 @@ class Post_Attachment extends File
     public function canEdit($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return ($this->Post()) ? $this->Post()->canEdit($member) : true;
     }
@@ -394,7 +409,7 @@ class Post_Attachment extends File
 
             if (is_numeric($SQL_ID)) {
                 $file = DataObject::get_by_id("Post_Attachment", $SQL_ID);
-                $response = SS_HTTPRequest::send_file(file_get_contents($file->getFullPath()), $file->Name);
+                $response = HTTPRequest::send_file(file_get_contents($file->getFullPath()), $file->Name);
                 $response->output();
             }
         }
