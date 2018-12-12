@@ -7,7 +7,7 @@
  *
  * @package forum
  */
-
+namespace SilverStripe\Forum\Search;
 class ForumSearch
 {
     
