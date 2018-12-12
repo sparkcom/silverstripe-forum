@@ -1,4 +1,8 @@
 <?php
+namespace SilverStripe\Forum\fields;
+use SilverStripe\Forms\DropdownField;
+use SilverStripe\i18n\i18n;
+use SilverStripe\Security\Security;
 
 /**
  * A simple extension to dropdown field, pre-configured to list countries.
@@ -26,7 +30,7 @@ class ForumCountryDropdownField extends DropdownField
      */
     protected function locale()
     {
-        if (($member = Member::currentUser()) && $member->Locale) {
+        if (($member = Security::getCurrentUser()) && $member->Locale) {
             return $member->Locale;
         }
         return i18n::get_locale();
@@ -36,7 +40,7 @@ class ForumCountryDropdownField extends DropdownField
     {
         if (!is_array($source)) {
             // Get a list of countries from Zend
-            $source = Zend_Locale::getTranslationList('territory', $this->locale(), 2);
+            $source = i18n::getData()->getCountries();
 
             // We want them ordered by display name, not country code
 
@@ -52,7 +56,7 @@ class ForumCountryDropdownField extends DropdownField
             unset($source['ZZ']);
         }
 
-        parent::__construct($name, ($title===null) ? $name : $title, $source, $value, $form);
+        parent::__construct($name, ($title===null) ? $name : $title, $source, $value);
     }
 
     public function Field($properties = array())
