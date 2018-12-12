@@ -12,7 +12,15 @@
  * Lists the Number of people who have signed up in the past months categorized
  * by month.
  */
-class ForumReport_MemberSignups extends SS_Report
+namespace SilverStripe\Forum\Report;
+
+use SilverStripe\ORM\ArrayList;
+use SilverStripe\ORM\Connect\MySQLQuery;
+use SilverStripe\ORM\DB;
+use SilverStripe\Reports\Report;
+use SilverStripe\View\ArrayData;
+
+class ForumReport_MemberSignups extends \SilverStripe\Reports\Report
 {
 
     public function title()
@@ -22,7 +30,7 @@ class ForumReport_MemberSignups extends SS_Report
 
     public function sourceRecords($params = array())
     {
-        $membersQuery = new SQLQuery();
+        $membersQuery = new MySQLQuery();
         $membersQuery->setFrom('"Member"');
         $membersQuery->setSelect(array(
             'Month' => DB::getConn()->formattedDatetimeClause('"Created"', '%Y-%m'),
@@ -61,7 +69,7 @@ class ForumReport_MemberSignups extends SS_Report
  * Lists the Number of Posts made in the forums in the past months categorized
  * by month.
  */
-class ForumReport_MonthlyPosts extends SS_Report
+class ForumReport_MonthlyPosts extends Report
 {
 
     public function title()
@@ -71,10 +79,10 @@ class ForumReport_MonthlyPosts extends SS_Report
 
     public function sourceRecords($params = array())
     {
-        $postsQuery = new SQLQuery();
+        $postsQuery = new MySQLQuery();
         $postsQuery->setFrom('"Post"');
         $postsQuery->setSelect(array(
-            'Month' => DB::getConn()->formattedDatetimeClause('"Created"', '%Y-%m'),
+            'Month' => DB::get_conn()->formattedDatetimeClause('"Created"', '%Y-%m'),
             'Posts' => 'COUNT("Created")'
         ));
         $postsQuery->setGroupBy('"Month"');
