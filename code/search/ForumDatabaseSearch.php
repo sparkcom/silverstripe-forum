@@ -6,6 +6,12 @@
  * @package forum
  */
 
+namespace SilverStripe\Forum\Search;
+
+use SilverStripe\Core\Convert;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\ORM\DataList;
+
 class ForumDatabaseSearch implements ForumSearchProvider
 {
     
