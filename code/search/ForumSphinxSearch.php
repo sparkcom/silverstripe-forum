@@ -12,6 +12,8 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Search;
+use SilverStripe\ORM\DataObject;
 
 class ForumSphinxSearch implements ForumSearchProvider
 {
