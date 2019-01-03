@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 	<div class="forumHolderFeatures">
 
 		<div id="SortThreadsBy">
@@ -52,4 +52,4 @@
 		<% end_if %>
 	</div>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
