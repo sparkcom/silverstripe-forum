@@ -19,7 +19,6 @@ use SilverStripe\Forms\DropdownField;
 use SilverStripe\Forms\EmailField;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\FileField;
-use SilverStripe\Forms\Form;
 use SilverStripe\Forms\HeaderField;
 use SilverStripe\Forms\LiteralField;
 use SilverStripe\Forms\ReadonlyField;
@@ -30,13 +29,15 @@ use SilverStripe\Forum\Model\Post;
 use SilverStripe\Forum\Page\Forum;
 use SilverStripe\Forum\Page\ForumHolder;
 use SilverStripe\i18n\i18n;
-use SilverStripe\ORM\Connect\MySQLQuery;
 use SilverStripe\ORM\DataExtension;
 use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DataQuery;
 use SilverStripe\ORM\DB;
+use SilverStripe\ORM\Queries\SQLSelect;
 use SilverStripe\Security\Permission;
 use SilverStripe\Security\Security;
 use SilverStripe\View\Requirements;
+use SilverStripe\View\SSViewer;
 
 class ForumRole extends DataExtension
 {
@@ -44,7 +45,7 @@ class ForumRole extends DataExtension
     /**
      * Edit the given query object to support queries for this extension
      */
-    public function augmentSQL(MySQLQuery &$query)
+    public function augmentSQL(SQLSelect $query, DataQuery $dataQuery = null)
     {
     }
 
@@ -300,23 +301,25 @@ class ForumRole extends DataExtension
 
     public function updateCMSFields(FieldList $fields)
     {
-        $allForums = DataObject::get('Forum');
+        $allForums = DataObject::get(Forum::class);
         $fields->removeByName('ModeratedForums');
         $fields->addFieldToTab('Root.ModeratedForums', new CheckboxSetField('ModeratedForums', _t('ForumRole.MODERATEDFORUMS', 'Moderated forums'), ($allForums->exists() ? $allForums->map('ID', 'Title') : array())));
         $suspend = $fields->dataFieldByName('SuspendedUntil');
-        $suspend->setConfig('showcalendar', true);
+       // $suspend->setConfig('showcalendar', true);
         if (Permission::checkMember($this->owner->ID, "ACCESS_FORUM")) {
             $avatarField = new FileField('Avatar', _t('ForumRole.UPLOADAVATAR', 'Upload avatar'));
             $avatarField->getValidator()->setAllowedExtensions(array('jpg', 'jpeg', 'gif', 'png'));
 
             $fields->addFieldToTab('Root.Forum', $avatarField);
             $fields->addFieldToTab('Root.Forum', new DropdownField("ForumRank", _t('ForumRole.FORUMRANK', "User rating"), array(
-                "Community Member" => _t('ForumRole.COMMEMBER'),
+                "Community Member" => _t('ForumRole.COMMEMBER', 'Community Member'),
                 "Administrator" => _t('ForumRole.ADMIN', 'Administrator'),
                 "Moderator" => _t('ForumRole.MOD', 'Moderator')
             )));
             $fields->addFieldToTab('Root.Forum', $this->owner->dbObject('ForumStatus')->scaffoldFormField());
         }
+
+        $fields->removeByName( ['LastViewed']); //use Login Attemp ben@zenserve.eu
     }
 
     public function IsSuspended()
@@ -356,8 +359,14 @@ class ForumRole extends DataExtension
         }
 
         if ($member) {
+            return  Permission::checkMember($member, "CMS_ACCESS_SecurityAdmin") ;
+        }
+
+        if ($member) {
             return $member->can('AdminCMS');
         }
+
+
 
         return false;
     }
@@ -389,8 +398,8 @@ class ForumRole extends DataExtension
      */
     public function getFormattedAvatar()
     {
-        $default = "forum/images/forummember_holder.gif";
-        $currentTheme = Config::inst()->get('SSViewer', 'theme');
+        $default = "resources/vendor/silverstripe/forum/images/forummember_holder.gif";
+        $currentTheme = Config::inst()->get(SSViewer::class, 'theme');
 
         if (file_exists('themes/' . $currentTheme . '_forum/images/forummember_holder.gif')) {
             $default = 'themes/' . $currentTheme . '_forum/images/forummember_holder.gif';
