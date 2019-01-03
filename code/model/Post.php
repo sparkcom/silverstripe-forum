@@ -12,6 +12,7 @@ use SilverStripe\Control\Director;
 use SilverStripe\Control\HTTPRequest;
 use SilverStripe\Core\Convert;
 use SilverStripe\Forum\Page\Forum;
+use SilverStripe\Forum\Parser\ForumBBCodeParser;
 use SilverStripe\GraphQL\Controller;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DB;
@@ -32,7 +33,11 @@ class Post extends DataObject
         "Updated" => "Datetime",
         "RSSContent" => "HTMLText",
         "RSSAuthor" => "Varchar",
-        "Content" => "HTMLText"
+        "Content" => "HTMLText",
+        'ReplyLink'=>'HTMLText',
+        'EditLink'=>'HTMLText',
+        'DeleteLink'=>'HTMLText',
+        'ParsedContent'=>'HTMLText',
     );
 
     private static $has_one = array(
@@ -354,6 +359,11 @@ class Post extends DataObject
 
         return ($action == "show") ? $link . $pos : $link;
     }
+
+    public function ParsedContent (){
+        $parser = new  ForumBBCodeParser();
+        return $parser->parse( $this->Content);
+    }
 }
 
 /**
@@ -416,4 +426,6 @@ class Post_Attachment extends File
 
         return $this->redirectBack();
     }
+
+
 }
