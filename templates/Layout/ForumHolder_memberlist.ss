@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 	<div class="forumHolderFeatures">
 
 		<table id="MembersList">
@@ -48,4 +48,4 @@
 		<% end_if %>
 	</div>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
