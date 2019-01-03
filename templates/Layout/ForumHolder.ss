@@ -1,13 +1,13 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 
-<table class="forum-topics">
+<table class="forum-topics table">
 
 	<% if $GlobalAnnouncements %>
 		<tr class="category">
 			<td colspan="4"><% _t('ForumHolder_ss.ANNOUNCEMENTS', 'Announcements') %></td>
 		</tr>
 		<% loop $GlobalAnnouncements %>
-			<% include ForumHolder_List %>
+			<% include SilverStripe\Forum\Includes\ForumHolder_List %>
 		<% end_loop %>
 	<% end_if %>
 
@@ -21,7 +21,7 @@
 				<th><% _t('ForumHolder_ss.LASTPOST','Last Post') %></th>
 			</tr>
 			<% loop $CategoryForums %>
-				<% include ForumHolder_List %>
+				<% include SilverStripe\Forum\Includes\ForumHolder_List %>
 			<% end_loop %>
 		<% end_loop %>
 	<% else %>
@@ -32,9 +32,9 @@
 			<td><% _t('ForumHolder_ss.LASTPOST','Last Post') %></td>
 		</tr>
 		<% loop $Forums %>
-			<% include ForumHolder_List %>
+			<% include SilverStripe\Forum\Includes\ForumHolder_List %>
 		<% end_loop %>
 	<% end_if %>
 </table>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
