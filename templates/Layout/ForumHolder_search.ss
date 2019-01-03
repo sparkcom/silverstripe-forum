@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 
 	<% if $SearchResults %>
 		<div id="forum_search" class="forumHolderFeatures">
@@ -29,7 +29,7 @@
 				<% if $SearchResults.MoreThanOnePage %>
 				<tr class="rowOne category">
 					<td class="forum-pagination" colspan="3">
-						<% include ForumPagination %>
+						<% include SilverStripe\Forum\Includes\ForumPagination %>
 					</td>
 				</tr>
 				<% end_if %>
@@ -43,4 +43,4 @@
 		</div>
 	<% end_if %>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
