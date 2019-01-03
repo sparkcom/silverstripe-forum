@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 	<% if $Member.IsBanned %><h2>This user has been banned. Please contact us if you believe this is a mistake</h2>
 	<% else_if $Member.isGhost %><h2>This user has been ghosted. Please contact us if you believe this is a mistake</h2>
 	<% else %>
@@ -52,4 +52,4 @@
 			</div>
 		<% end_if %>
 	<% end_if %>
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
