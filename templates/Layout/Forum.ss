@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 
 <% if ForumAdminMsg %>
 	<p class="forum-message-admin">$ForumAdminMsg</p>
@@ -24,7 +24,7 @@
 				<td colspan="3"><% _t('Forum_ss.ANNOUNCEMENTS', 'Announcements') %></td>
 			</tr>
 			<% loop $getStickyTopics(0) %>
-				<% include TopicListing %>
+				<% include SilverStripe\Forum\Includes\TopicListing %>
 			<% end_loop %>
 		</table>
 	<% end_if %>
@@ -40,7 +40,7 @@
 		</tr>
 		<% if $Topics %>
 			<% loop $Topics %>
-				<% include TopicListing %>
+				<% include SilverStripe\Forum\Includes\TopicListing %>
 			<% end_loop %>
 		<% else %>
 			<tr>
@@ -66,4 +66,4 @@
 
 </div><!-- forum-features. -->
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
