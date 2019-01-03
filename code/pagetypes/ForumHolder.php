@@ -47,9 +47,9 @@ use SilverStripe\ORM\PaginatedList;
 use SilverStripe\ORM\Queries\SQLSelect;
 
 use SilverStripe\Security\Group;
+use SilverStripe\Security\LoginAttempt;
 use SilverStripe\Security\Member;
 use SilverStripe\Security\Security;
-use SilverStripe\Versioned\Versioned;
 use SilverStripe\View\Parsers\HTMLValue;
 use SilverStripe\View\Requirements;
 
@@ -367,11 +367,20 @@ class ForumHolder extends \Page
             $groupIDs[] = $adminGroup->ID;
         }
 
-        return Member::get()
+        $ids =  Member::get()
             ->leftJoin('Group_Members', '"Member"."ID" = "Group_Members"."MemberID"')
             ->filter('GroupID', $groupIDs)
-            ->where('"Member"."LastViewed" > ' . DB::get_conn()->datetimeIntervalClause('NOW', '-15 MINUTE'))
-            ->sort('"Member"."FirstName", "Member"."Surname"');
+         //   ->where('"Member"."LastViewed" > ' . DB::get_conn()->datetimeIntervalClause('NOW', '-15 MINUTE'))
+            ->sort('"Member"."FirstName", "Member"."Surname"')->column('ID');
+
+        if(! $ids ) $ids = array(0);
+
+        $ids = LoginAttempt::get()->filter(['Status'=>'Success', 'MemberID'=>$ids]) ->
+            where('Created > ' . DB::get_conn()->datetimeIntervalClause('NOW', '-15 MINUTE'))->column('MemberID');
+
+        if(!$ids ) $ids = array(0);
+        return Member::get()->filter( ['ID' => $ids] ) ->sort('"Member"."FirstName", "Member"."Surname"');
+
     }
 
     /**
@@ -487,7 +496,8 @@ class ForumHolder extends \Page
     {
         $stage = (Controller::curr()->getRequest()) ? Controller::curr()->getRequest()->getVar('stage') : false;
         if (!$stage) {
-            $stage = Versioned::get_live_stage();
+           // $stage = Versioned::get_live_stage();
+            $stage = "Live"; //Copyed from SS3's Versioned::get_live_stage();
         }
 
       //  if ((class_exists(SapphireTest::class, false) && SapphireTest::is_running_test())
@@ -683,9 +693,9 @@ class ForumHolder_Controller extends \PageController
     {
         parent::init();
 
-        Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js");
-        Requirements::javascript("forum/javascript/jquery.MultiFile.js");
-        Requirements::javascript("forum/javascript/forum.js");
+        //Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js");
+        Requirements::javascript("silverstripe/forum:javascript/jquery.MultiFile.js");
+        Requirements::javascript("silverstripe/forum:javascript/Forum.js");
 
         Requirements::themedCSS('Forum', 'forum', 'all');
 
