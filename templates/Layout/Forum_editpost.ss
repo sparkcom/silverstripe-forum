@@ -1,5 +1,5 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 
 	$EditForm
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
