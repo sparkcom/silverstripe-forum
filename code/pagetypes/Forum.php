@@ -10,6 +10,7 @@
  */
 namespace SilverStripe\Forum\Page;
 
+
 use SilverStripe\Assets\Upload;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
@@ -48,12 +49,15 @@ use SilverStripe\Forum\Model\ForumThread;
 use SilverStripe\Forum\Model\ForumThread_Subscription;
 use SilverStripe\Forum\Model\Post;
 use SilverStripe\Forum\Model\Post_Attachment;
+use SilverStripe\Forum\Parser\ForumBBCodeParser;
+use SilverStripe\Forum\Search\ForumSearch;
 use SilverStripe\ORM\ArrayList;
 
 use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DataQuery;
 use SilverStripe\ORM\DB;
 use SilverStripe\ORM\FieldType\DBField;
+use SilverStripe\ORM\PaginatedList;
 use SilverStripe\ORM\Queries\SQLSelect;
 use SilverStripe\ORM\ValidationException;
 use SilverStripe\Security\Group;
@@ -63,7 +67,7 @@ use SilverStripe\Security\Security;
 use SilverStripe\Security\SecurityToken;
 use SilverStripe\View\ArrayData;
 use SilverStripe\View\Requirements;
-use SilverStripe\ORM\Connect\Query;
+
 
 class Forum extends \Page
 {
@@ -140,7 +144,6 @@ class Forum extends \Page
             if ($holder) {
                 return $holder->canPost($member);
             }
-
             return false;
         }
 
@@ -301,8 +304,8 @@ class Forum extends \Page
         $self = $this;
 
         $this->beforeUpdateCMSFields(function ($fields) use ($self) {
-            Requirements::javascript("forum/javascript/ForumAccess.js");
-            Requirements::css("forum/css/Forum_CMS.css");
+            Requirements::javascript("silverstripe/forum:javascript/ForumAccess.js");
+            Requirements::css("silverstripe/forum:css/Forum_CMS.css");
 
             $fields->addFieldToTab("Root.Access", new HeaderField(_t('Forum.ACCESSPOST', 'Who can post to the forum?'), 2));
             $fields->addFieldToTab("Root.Access", $optionSetField = new OptionsetField("CanPostType", "", array(
@@ -428,7 +431,7 @@ class Forum extends \Page
     public function getForumHolder()
     {
         $holder = $this->Parent();
-        if ($holder->ClassName=='ForumHolder') {
+        if ($holder->ClassName==ForumHolder::class) {
             return $holder;
         }
     }
@@ -532,7 +535,7 @@ class Forum extends \Page
             ->setDistinct(false);
 
         // Alter the forum threads list to use the new query
-        $threads = $threads->setDataQuery(new Forum_DataQuery('ForumThread', $threadQuery));
+        $threads = $threads->setDataQuery(new Forum_DataQuery(ForumThread::class, $threadQuery));
 
         // And return the results
         return $threads->exists() ? new PaginatedList($threads, $_GET) : null;
@@ -579,6 +582,7 @@ class Forum extends \Page
 
         return $res;
     }
+
 }
 
 /**
@@ -603,7 +607,7 @@ class Forum_Controller extends \PageController
         'unsubscribe',
         'rss',
         'ban',
-        'ghost'
+        'ghost','search'
     );
 
 
@@ -614,9 +618,9 @@ class Forum_Controller extends \PageController
             return;
         }
 
-        Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js");
-        Requirements::javascript("forum/javascript/Forum.js");
-        Requirements::javascript("forum/javascript/jquery.MultiFile.js");
+        Requirements::javascript('silverstripe/admin: thirdparty/jquery/jquery.js');
+        Requirements::javascript("silverstripe/forum:javascript/Forum.js");
+        Requirements::javascript("silverstripe/forum:javascript/jquery.MultiFile.js");
 
         Requirements::themedCSS('Forum', 'forum', 'all');
 
@@ -913,7 +917,8 @@ class Forum_Controller extends \PageController
      */
     public function BBTags()
     {
-        return BBCodeParser::usable_tags();
+       return ForumBBCodeParser::usable_tags();
+
     }
 
     /**
@@ -928,7 +933,7 @@ class Forum_Controller extends \PageController
         if ($post) {
             $thread = $post->Thread();
         } elseif (isset($this->urlParams['ID']) && is_numeric($this->urlParams['ID'])) {
-            $thread = DataObject::get_by_id('ForumThread', $this->urlParams['ID']);
+            $thread = DataObject::get_by_id(ForumThread::class, $this->urlParams['ID']);
         }
 
         // Check permissions
@@ -960,10 +965,10 @@ class Forum_Controller extends \PageController
             return false;
         }
 
-        $forumBBCodeHint = $this->renderWith('Forum_BBCodeHint');
+        $forumBBCodeHint = $this->renderWith('SilverStripe\Forum\Includes\Forum_BBCodeHint');
 
         $fields = new FieldList(
-            ($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title', _t('Forum.FORUMTHREADTITLE', ''), 'Re:'. $thread->Title),
+            ($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title', _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
             new TextareaField("Content", _t('Forum.FORUMREPLYCONTENT', 'Content')),
             new LiteralField(
                 "BBCodeHelper",
@@ -1067,14 +1072,14 @@ class Forum_Controller extends \PageController
         // a new thread
         $thread = false;
         if (isset($data['ThreadID'])) {
-            $thread = DataObject::get_by_id('ForumThread', $data['ThreadID']);
+            $thread = DataObject::get_by_id(ForumThread::class, $data['ThreadID']);
         }
 
         // If this is a simple edit the post then handle it here. Look up the correct post,
         // make sure we have edit rights to it then update the post
         $post = false;
         if (isset($data['ID'])) {
-            $post = DataObject::get_by_id('Post', $data['ID']);
+            $post = DataObject::get_by_id(Post::class, $data['ID']);
 
             if ($post && $post->isFirstPost()) {
                 if ($title) {
@@ -1336,7 +1341,7 @@ class Forum_Controller extends \PageController
     {
         $topic = array(
             'Subtitle' => DBField::create_field('HTMLText', _t('Forum.NEWTOPIC', 'Start a new topic')),
-            'Abstract' => DBField::create_field('HTMLText', DataObject::get_one("ForumHolder")->ForumAbstract)
+            'Abstract' => DBField::create_field('HTMLText', DataObject::get_one(ForumHolder::class)->ForumAbstract)
         );
         return $topic;
     }
@@ -1362,7 +1367,7 @@ class Forum_Controller extends \PageController
             $SQL_id = Convert::raw2sql($this->urlParams['ID']);
 
             if (is_numeric($SQL_id)) {
-                if ($thread = DataObject::get_by_id('ForumThread', $SQL_id)) {
+                if ($thread = DataObject::get_by_id(ForumThread::class, $SQL_id)) {
                     if (!$thread->canView()) {
                         Security::permissionFailure($this);
 
@@ -1395,7 +1400,7 @@ class Forum_Controller extends \PageController
             return false;
         }
 
-        $file = DataObject::get_by_id("Post_Attachment", (int) $this->urlParams['ID']);
+        $file = DataObject::get_by_id(Post_Attachment::class, (int) $this->urlParams['ID']);
 
         if ($file && $file->canDelete()) {
             $file->delete();
@@ -1426,7 +1431,7 @@ class Forum_Controller extends \PageController
     public function EditForm()
     {
         $id = (isset($this->urlParams['ID'])) ? $this->urlParams['ID'] : null;
-        $post = DataObject::get_by_id('Post', $id);
+        $post = DataObject::get_by_id(Post::class, $id);
 
         return $this->PostMessageForm(false, $post);
     }
@@ -1445,7 +1450,7 @@ class Forum_Controller extends \PageController
         }
 
         if (isset($this->urlParams['ID'])) {
-            if ($post = DataObject::get_by_id('Post', (int) $this->urlParams['ID'])) {
+            if ($post = DataObject::get_by_id(Post::class, (int) $this->urlParams['ID'])) {
                 if ($post->canDelete()) {
                     // delete the whole thread if this is the first one. The delete action
                     // on thread takes care of the posts.
@@ -1541,6 +1546,65 @@ class Forum_Controller extends \PageController
         }
 
         return $this->redirect($this->Link());
+    }
+
+
+
+    /**
+     * The search action
+     *
+     * @return array Returns an array to render the search results.
+     */
+    public function search()
+    {
+        $keywords   = (isset($_REQUEST['Search'])) ? Convert::raw2xml($_REQUEST['Search']) : null;
+        $order      = (isset($_REQUEST['order'])) ? Convert::raw2xml($_REQUEST['order']) : null;
+        $start      = (isset($_REQUEST['start'])) ? (int) $_REQUEST['start'] : 0;
+
+        $abstract = ($keywords) ? "<p>" . sprintf(_t('ForumHolder.SEARCHEDFOR', "You searched for '%s'."), $keywords) . "</p>": null;
+
+        // get the results of the query from the current search engine
+        $search = ForumSearch::get_search_engine();
+
+        if ($search) {
+            $engine = new $search();
+
+            $results = $engine->getResults($this->ParentID, $keywords, $order, $start);
+        } else {
+            $results = false;
+        }
+
+        if($results)
+            $results = $results->filter('ForumID' , $this->ID);
+
+
+        //Paginate the results
+        $results = PaginatedList::create(
+            $results,
+            $this->request->getVars()
+        );
+
+
+        // if the user has requested this search as an RSS feed then output the contents as xml
+        // rather than passing it to the template
+        if (isset($_REQUEST['rss'])) {
+            $rss = new RSSFeed($results, $this->Link(), _t('ForumHolder.SEARCHRESULTS', 'Search results'), "", "Title", "RSSContent", "RSSAuthor");
+
+            return $rss->outputToBrowser();
+        }
+
+        // attach a link to a RSS feed version of the search results
+        $rssLink = $this->Link() ."search/?Search=".urlencode($keywords). "&amp;order=".urlencode($order)."&amp;rss";
+        RSSFeed::linkToFeed($rssLink, _t('ForumHolder.SEARCHRESULTS', 'Search results'));
+
+        return $this->renderWith([ForumHolder::class. '_search', 'Page'], array(
+            "Subtitle"      => DBField::create_field('Text', _t('ForumHolder.SEARCHRESULTS', 'Search results')),
+            "Abstract"      => DBField::create_field('HTMLText', $abstract),
+            "Query"             => DBField::create_field('Text', $_REQUEST['Search']),
+            "Order"             => DBField::create_field('Text', ($order) ? $order : "relevance"),
+            "RSSLink"       => DBField::create_field('HTMLText', $rssLink),
+            "SearchResults"     => $results
+        ));
     }
 }
 
