@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 
 
 <table class="forum-topics">
@@ -22,7 +22,7 @@
 				<a href="$ReplyLink" title="<% _t('Forum_show_ss.CLICKREPLY','Click here to reply to this topic') %>"><% _t('Forum_show_ss.REPLY','Reply') %></a>
 			<% end_if %>
 			<% if $CurrentMember %>
-				<% include ForumThreadSubscribe %>
+				<% include include SilverStripe\Forum\Includes\ForumThreadSubscribe %>
 			<% end_if %>
 		</td>
 	</tr>
@@ -40,7 +40,7 @@
 </table>
 
 <% loop $Posts %>
-	<% include SinglePost %>
+	<% include SilverStripe\Forum\Includes\SinglePost %>
 <% end_loop %>
 
 <table class="forum-topics">
@@ -83,4 +83,4 @@
 </div>
 <% end_if %>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
