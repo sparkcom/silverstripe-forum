@@ -10,13 +10,14 @@ namespace SilverStripe\Forum\Model;
 use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
 use SilverStripe\Control\Email\Email;
+use SilverStripe\Core\Config\Config;
 use SilverStripe\Core\Convert;
 use SilverStripe\Forum\Page\Forum;
-use SilverStripe\ORM\Connect\MySQLQuery;
 use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DB;
 use SilverStripe\ORM\FieldType\DBDatetime;
 use SilverStripe\ORM\FieldType\DBField;
+use SilverStripe\ORM\Queries\SQLSelect;
 use SilverStripe\Security\Member;
 use SilverStripe\Security\Security;
 
@@ -116,7 +117,7 @@ class ForumThread extends DataObject
     /**
      * Hook up into canPost check
      */
-    public function canCreate($member = null)
+    public function canCreate($member = null, $context = array() )
     {
         if (!$member) {
             $member = Security::getCurrentUser();
@@ -149,7 +150,7 @@ class ForumThread extends DataObject
      */
     public function getLatestPost()
     {
-        return DataObject::get_one('Post', "\"ThreadID\" = '$this->ID'", true, '"ID" DESC');
+        return DataObject::get_one(Post::class, "\"ThreadID\" = '$this->ID'", true, '"ID" DESC');
     }
 
     /**
@@ -159,7 +160,7 @@ class ForumThread extends DataObject
      */
     public function getFirstPost()
     {
-        return DataObject::get_one('Post', "\"ThreadID\" = '$this->ID'", true, '"ID" ASC');
+        return DataObject::get_one(Post::class, "\"ThreadID\" = '$this->ID'", true, '"ID" ASC');
     }
 
     /**
@@ -170,7 +171,7 @@ class ForumThread extends DataObject
      */
     public function getNumPosts()
     {
-        $sqlQuery = new MySQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT("Post"."ID")');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -189,11 +190,11 @@ class ForumThread extends DataObject
     {
         $session = Controller::curr()->getRequest()->getSession();
 
-        if ($session::get('ForumViewed-' . $this->ID)) {
+        if ($session->get('ForumViewed-' . $this->ID)) {
             return false;
         }
 
-        $session::set('ForumViewed-' . $this->ID, 'true');
+        $session->set('ForumViewed-' . $this->ID, 'true');
 
         $this->NumViews++;
         $SQL_numViews = Convert::raw2sql($this->NumViews);
@@ -208,7 +209,7 @@ class ForumThread extends DataObject
      */
     public function Link($action = "show", $showID = true)
     {
-        $forum = DataObject::get_by_id("Forum", $this->ForumID);
+        $forum = DataObject::get_by_id(Forum::class, $this->ForumID);
         if ($forum) {
             $baseLink = $forum->Link();
             $extra = ($showID) ? '/'.$this->ID : '';
@@ -324,7 +325,7 @@ class ForumThread_Subscription extends DataObject
     static function notify(Post $post)
     {
         $list = DataObject::get(
-            "ForumThread_Subscription",
+            ForumThread_Subscription::class,
             "\"ThreadID\" = '". $post->ThreadID ."' AND \"MemberID\" != '$post->AuthorID'"
         );
 
@@ -333,8 +334,8 @@ class ForumThread_Subscription extends DataObject
                 $SQL_id = Convert::raw2sql((int)$obj->MemberID);
 
                 // Get the members details
-                $member = DataObject::get_one("Member", "\"Member\".\"ID\" = '$SQL_id'");
-                $adminEmail = Config::inst()->get('Email', 'admin_email');
+                $member = DataObject::get_one(Member::class, "\"Member\".\"ID\" = '$SQL_id'");
+                $adminEmail = Config::inst()->get(Email::class, 'admin_email');
 
                 if ($member) {
                     $email = new Email();
