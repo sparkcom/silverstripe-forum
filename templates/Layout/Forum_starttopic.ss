@@ -1,7 +1,8 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
+
 <div id="TopicTree">
 	<div id="Root">
 		$PostMessageForm(1)
 	</div>
 </div>
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
