@@ -1,4 +1,4 @@
-<% include ForumHeader %>
+<% include SilverStripe\Forum\Includes\ForumHeader %>
 $Content
 <div id="UserProfile">
 	<% if $CurrentMember %>
@@ -8,4 +8,4 @@ $Content
 	<% end_if %>
 </div>
 
-<% include ForumFooter %>
+<% include SilverStripe\Forum\Includes\ForumFooter %>
