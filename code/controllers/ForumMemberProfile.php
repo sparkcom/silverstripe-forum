@@ -671,7 +671,7 @@ class ForumMemberProfile extends \PageController
 
 
     /**
-     * This needs MetaTags because it doesn't extend SiteTree at any point
+     * This needs MetaTags because it doesn't extend SiteTree at any point 
      */
     function MetaTags($includeTitle = true)
     {
