@@ -8,8 +8,70 @@
  *
  * @package forum
  */
+namespace SilverStripe\Forum\Page;
 
-class Forum extends Page
+
+use Psr\Log\LoggerInterface;
+use SilverStripe\Assets\Upload;
+use SilverStripe\Control\Controller;
+use SilverStripe\Control\Director;
+use SilverStripe\Control\Email\Email;
+use SilverStripe\Control\HTTPRequest;
+use SilverStripe\Control\RSS\RSSFeed;
+use SilverStripe\Core\Config\Config;
+use SilverStripe\Core\Convert;
+use SilverStripe\Core\Injector\Injector;
+use SilverStripe\Forms\CheckboxField;
+use SilverStripe\Forms\DropdownField;
+use SilverStripe\Forms\FieldList;
+use SilverStripe\Forms\FileField;
+use SilverStripe\Forms\Form;
+use SilverStripe\Forms\FormAction;
+use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldAddExistingAutocompleter;
+use SilverStripe\Forms\GridField\GridFieldButtonRow;
+use SilverStripe\Forms\GridField\GridFieldConfig;
+use SilverStripe\Forms\GridField\GridFieldDataColumns;
+use SilverStripe\Forms\GridField\GridFieldDeleteAction;
+use SilverStripe\Forms\GridField\GridFieldPageCount;
+use SilverStripe\Forms\GridField\GridFieldPaginator;
+use SilverStripe\Forms\GridField\GridFieldSortableHeader;
+use SilverStripe\Forms\GridField\GridFieldToolbarHeader;
+use SilverStripe\Forms\HeaderField;
+use SilverStripe\Forms\HiddenField;
+use SilverStripe\Forms\LiteralField;
+use SilverStripe\Forms\OptionsetField;
+use SilverStripe\Forms\ReadonlyField;
+use SilverStripe\Forms\RequiredFields;
+use SilverStripe\Forms\TextareaField;
+use SilverStripe\Forms\TextField;
+use SilverStripe\Forms\TreeMultiselectField;
+use SilverStripe\Forum\Model\ForumCategory;
+use SilverStripe\Forum\Model\ForumThread;
+use SilverStripe\Forum\Model\ForumThread_Subscription;
+use SilverStripe\Forum\Model\Post;
+use SilverStripe\Forum\Model\Post_Attachment;
+use SilverStripe\Forum\Parser\ForumBBCodeParser;
+use SilverStripe\Forum\Search\ForumSearch;
+use SilverStripe\ORM\ArrayList;
+
+use SilverStripe\ORM\DataObject;
+use SilverStripe\ORM\DataQuery;
+use SilverStripe\ORM\DB;
+use SilverStripe\ORM\FieldType\DBField;
+use SilverStripe\ORM\PaginatedList;
+use SilverStripe\ORM\Queries\SQLSelect;
+use SilverStripe\ORM\ValidationException;
+use SilverStripe\Security\Group;
+use SilverStripe\Security\Member;
+use SilverStripe\Security\Permission;
+use SilverStripe\Security\Security;
+use SilverStripe\Security\SecurityToken;
+use SilverStripe\View\ArrayData;
+use SilverStripe\View\Requirements;
+
+
+class Forum extends \Page
 {
 
     private static $allowed_children = 'none';
@@ -29,19 +91,20 @@ class Forum extends Page
     );
 
     private static $has_one = array(
-        "Moderator" => "Member",
-        "Category" => "ForumCategory"
+        "Moderator" => Member::class,
+        "Category" => ForumCategory::class
     );
 
     private static $many_many = array(
-        'Moderators' => 'Member',
-        'PosterGroups' => 'Group'
+        'Moderators' => Member::class,
+        'PosterGroups' => Group::class
     );
 
     private static $defaults = array(
         "ForumPosters" => "LoggedInUsers"
     );
 
+    private static $table_name = 'Forum';
     /**
      * Number of posts to include in the thread view before pagination takes effect.
      *
@@ -64,7 +127,7 @@ class Forum extends Page
     public function canView($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
         return (parent::canView($member) || $this->canModerate($member));
     }
@@ -75,7 +138,7 @@ class Forum extends Page
     public function canPost($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
 
         if ($this->CanPostType == "Inherit") {
@@ -83,7 +146,6 @@ class Forum extends Page
             if ($holder) {
                 return $holder->canPost($member);
             }
-
             return false;
         }
 
@@ -95,7 +157,7 @@ class Forum extends Page
             return true;
         }
 
-        if ($member = Member::currentUser()) {
+        if ($member = Security::getCurrentUser()) {
             if ($member->IsSuspended()) {
                 return false;
             }
@@ -125,7 +187,7 @@ class Forum extends Page
     public function canModerate($member = null)
     {
         if (!$member) {
-            $member = Member::currentUser();
+            $member = Security::getCurrentUser();
         }
 
         if (!$member) {
@@ -159,10 +221,10 @@ class Forum extends Page
     public function requireTable()
     {
         // Migrate permission columns
-        if (DB::getConn()->hasTable('Forum')) {
-            $fields = DB::getConn()->fieldList('Forum');
+        if (DB::get_schema()->hasTable('Forum')) {
+            $fields = DB::get_schema()->fieldList('Forum');
             if (in_array('ForumPosters', array_keys($fields)) && !in_array('CanPostType', array_keys($fields))) {
-                DB::getConn()->renameField('Forum', 'ForumPosters', 'CanPostType');
+                DB::get_schema()->renameField('Forum', 'ForumPosters', 'CanPostType');
                 DB::alteration_message('Migrated forum permissions from "ForumPosters" to "CanPostType"', "created");
             }
         }
@@ -206,7 +268,7 @@ class Forum extends Page
             $forumholder->Content = "<p>"._t('Forum.WELCOMEFORUMHOLDER', 'Welcome to SilverStripe Forum Module! This is the default ForumHolder page. You can now add forums.')."</p>";
             $forumholder->Status = "Published";
             $forumholder->write();
-            $forumholder->publish("Stage", "Live");
+            $forumholder->copyVersionToStage("Stage", "Live");
             DB::alteration_message(_t('Forum.FORUMHOLDERCREATED', 'ForumHolder page created'), "created");
 
             $forum = new Forum();
@@ -217,7 +279,7 @@ class Forum extends Page
             $forum->Status = "Published";
             $forum->CategoryID = $category->ID;
             $forum->write();
-            $forum->publish("Stage", "Live");
+            $forum->copyVersionToStage("Stage", "Live");
 
             DB::alteration_message(_t('Forum.FORUMCREATED', 'Forum page created'), "created");
         }
@@ -244,8 +306,8 @@ class Forum extends Page
         $self = $this;
 
         $this->beforeUpdateCMSFields(function ($fields) use ($self) {
-            Requirements::javascript("forum/javascript/ForumAccess.js");
-            Requirements::css("forum/css/Forum_CMS.css");
+            Requirements::javascript("silverstripe/forum:javascript/ForumAccess.js");
+            Requirements::css("silverstripe/forum:css/Forum_CMS.css");
 
             $fields->addFieldToTab("Root.Access", new HeaderField(_t('Forum.ACCESSPOST', 'Who can post to the forum?'), 2));
             $fields->addFieldToTab("Root.Access", $optionSetField = new OptionsetField("CanPostType", "", array(
@@ -325,7 +387,7 @@ class Forum extends Page
      *                         displayed
      * @return string HTML code to display breadcrumbs
      */
-    public function Breadcrumbs($maxDepth = null, $unlinked = false, $stopAtPageType = false, $showHidden = false)
+    public function Breadcrumbs($maxDepth = 20, $unlinked = false, $stopAtPageType = false, $showHidden = false, $delimiter = '&raquo;')
     {
         $page = $this;
         $nonPageParts = array();
@@ -371,7 +433,7 @@ class Forum extends Page
     public function getForumHolder()
     {
         $holder = $this->Parent();
-        if ($holder->ClassName=='ForumHolder') {
+        if ($holder->ClassName==ForumHolder::class) {
             return $holder;
         }
     }
@@ -394,7 +456,7 @@ class Forum extends Page
      */
     public function getNumTopics()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT(DISTINCT("ThreadID"))');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -410,7 +472,7 @@ class Forum extends Page
      */
     public function getNumPosts()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT("Post"."ID")');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -427,7 +489,7 @@ class Forum extends Page
      */
     public function getNumAuthors()
     {
-        $sqlQuery = new SQLQuery();
+        $sqlQuery = new SQLSelect();
         $sqlQuery->setFrom('"Post"');
         $sqlQuery->setSelect('COUNT(DISTINCT("AuthorID"))');
         $sqlQuery->addInnerJoin('Member', '"Post"."AuthorID" = "Member"."ID"');
@@ -441,7 +503,7 @@ class Forum extends Page
      * @return DataList
      */
     public function getTopics()
-    {
+    { die('benben');
         // Get a list of Posts
         $posts = Post::get();
 
@@ -470,12 +532,13 @@ class Forum extends Page
         $threadQuery = $threads->dataQuery()->query();
         $threadQuery
             ->addSelect(array('"PostMax"."PostCreatedMax", "PostMax"."PostIDMax"'))
-            ->addFrom('INNER JOIN ('.$postQuery->sql().') AS "PostMax" ON ("PostMax"."ThreadID" = "ForumThread"."ID")')
+            //->addFrom('INNER JOIN ('.$postQuery->sql().') AS "PostMax" ON ("PostMax"."ThreadID" = "ForumThread"."ID")')
+            ->addInnerJoin('(  '. $postQuery->sql() . ' )' , '"PostMax"."ThreadID" = "ForumThread"."ID" ', 'PostMax' )
             ->addOrderBy(array('"PostMax"."PostCreatedMax" DESC', '"PostMax"."PostIDMax" DESC'))
             ->setDistinct(false);
 
         // Alter the forum threads list to use the new query
-        $threads = $threads->setDataQuery(new Forum_DataQuery('ForumThread', $threadQuery));
+        $threads = $threads->setDataQuery(new Forum_DataQuery(ForumThread::class, $threadQuery));
 
         // And return the results
         return $threads->exists() ? new PaginatedList($threads, $_GET) : null;
@@ -504,13 +567,18 @@ class Forum extends Page
         $query
           ->addSelect('"PostMax"."PostMax"')
           // TODO: Confirm this works in non-MySQL DBs
-          ->addFrom(sprintf(
-              'LEFT JOIN (SELECT MAX("Created") AS "PostMax", "ThreadID" FROM "Post" WHERE "ForumID" = \'%s\' GROUP BY "ThreadID") AS "PostMax" ON ("PostMax"."ThreadID" = "ForumThread"."ID")',
+          /*->addFrom(sprintf(
+              'LEFT JOIN ( SELECT MAX("Created") AS "PostMax", "ThreadID" FROM "Post" WHERE "ForumID" = \'%s\' GROUP BY "ThreadID" ) AS "PostMax" ON ("PostMax"."ThreadID" = "ForumThread"."ID")',
               $this->ID
-          ))
+          ))*/
+           // addLeftJoin($table, $onPredicate, $tableAlias = '', $order = 20, $parameters = array())
+          ->addLeftJoin( '( SELECT MAX("Created") AS "PostMax", "ThreadID" FROM "Post" WHERE "ForumID" = \''.  $this->ID .'\' GROUP BY "ThreadID" )',
+               '"PostMax"."ThreadID" = "ForumThread"."ID"' , "PostMax")
+
           ->addOrderBy('"PostMax"."PostMax" DESC')
           ->setDistinct(false);
 
+        //  echo $query->sql () ; die('test');
        // Build result as ArrayList
         $res = new ArrayList();
         $rows = $query->execute();
@@ -522,6 +590,7 @@ class Forum extends Page
 
         return $res;
     }
+
 }
 
 /**
@@ -529,7 +598,7 @@ class Forum extends Page
  *
  * @package forum
  */
-class Forum_Controller extends Page_Controller
+class Forum_Controller extends \PageController
 {
 
     private static $allowed_actions = array(
@@ -546,7 +615,7 @@ class Forum_Controller extends Page_Controller
         'unsubscribe',
         'rss',
         'ban',
-        'ghost'
+        'ghost','search'
     );
 
 
@@ -557,9 +626,9 @@ class Forum_Controller extends Page_Controller
             return;
         }
 
-        Requirements::javascript(THIRDPARTY_DIR . "/jquery/jquery.js");
-        Requirements::javascript("forum/javascript/Forum.js");
-        Requirements::javascript("forum/javascript/jquery.MultiFile.js");
+        Requirements::javascript('silverstripe/admin: thirdparty/jquery/jquery.js');
+        Requirements::javascript("silverstripe/forum:javascript/Forum.js");
+        Requirements::javascript("silverstripe/forum:javascript/jquery.MultiFile.js");
 
         Requirements::themedCSS('Forum', 'forum', 'all');
 
@@ -578,17 +647,21 @@ class Forum_Controller extends Page_Controller
         }
 
         // Log this visit to the ForumMember if they exist
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
         if ($member && Config::inst()->get('ForumHolder', 'currently_online_enabled')) {
             $member->LastViewed = date("Y-m-d H:i:s");
             $member->write();
         }
 
+        $session = $this->getRequest()->getSession();
+
         // Set the back url
         if (isset($_SERVER['REQUEST_URI'])) {
-            Session::set('BackURL', $_SERVER['REQUEST_URI']);
+            $session->set('BackURL', $_SERVER['REQUEST_URI']);
+
+
         } else {
-            Session::set('BackURL', $this->Link());
+            $session->set('BackURL', $this->Link());
         }
     }
 
@@ -620,7 +693,7 @@ class Forum_Controller extends Page_Controller
      *
      * @return bool
      */
-    public function subscribe(SS_HTTPRequest $request)
+    public function subscribe(HTTPRequest $request)
     {
         // Check CSRF
         if (!SecurityToken::inst()->checkRequest($request)) {
@@ -629,10 +702,10 @@ class Forum_Controller extends Page_Controller
 		
 		$subscribed = false;
 
-        if (Member::currentUser() && !ForumThread_Subscription::already_subscribed($this->urlParams['ID'])) {
+        if (Security::getCurrentUser() && !ForumThread_Subscription::already_subscribed($this->urlParams['ID'])) {
             $obj = new ForumThread_Subscription();
             $obj->ThreadID = (int) $this->urlParams['ID'];
-            $obj->MemberID = Member::currentUserID();
+            $obj->MemberID = Security::getCurrentUser()->ID;
             $obj->LastSent = date("Y-m-d H:i:s");
             $obj->write();
 
@@ -649,9 +722,9 @@ class Forum_Controller extends Page_Controller
      *
      * @return bool
      */
-    public function unsubscribe(SS_HTTPRequest $request)
+    public function unsubscribe(HTTPRequest $request)
     {
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
 		$unsubscribed = false;
 
         if (!$member) {
@@ -676,9 +749,9 @@ class Forum_Controller extends Page_Controller
      *
      * Must be logged in and have the correct permissions to do marking
      */
-    public function markasspam(SS_HTTPRequest $request)
+    public function markasspam(HTTPRequest $request)
     {
-        $currentUser = Member::currentUser();
+        $currentUser = Security::getCurrentUser();
         if (!isset($this->urlParams['ID'])) {
             return $this->httpError(400);
         }
@@ -703,34 +776,34 @@ class Forum_Controller extends Page_Controller
             $post->extend('onAfterMarkAsSpam');
 
             // Log deletion event
-            SS_Log::log(sprintf(
+            Injector::inst()->get(LoggerInterface::class)->info(sprintf(
                 'Marked post #%d as spam, by moderator %s (#%d)',
                 $post->ID,
                 $currentUser->Email,
                 $currentUser->ID
-            ), SS_Log::NOTICE);
+            ));
 
             // Suspend the member (rather than deleting him),
             // which gives him or a moderator the chance to revoke a decision.
             if ($author = $post->Author()) {
-                $author->SuspendedUntil = date('Y-m-d', strtotime('+99 years', SS_Datetime::now()->Format('U')));
+                $author->SuspendedUntil = date('Y-m-d', strtotime('+99 years'));
                 $author->write();
             }
 
-            SS_Log::log(sprintf(
+            Injector::inst()->get(LoggerInterface::class)->info(sprintf(
                 'Suspended member %s (#%d) for spam activity, by moderator %s (#%d)',
                 $author->Email,
                 $author->ID,
                 $currentUser->Email,
                 $currentUser->ID
-            ), SS_Log::NOTICE);
+            ));
         }
 
         return (Director::is_ajax()) ? true : $this->redirect($this->Link());
     }
 
 
-    public function ban(SS_HTTPRequest $r)
+    public function ban(HTTPRequest $r)
     {
         if (!$r->param('ID')) {
             return $this->httpError(404);
@@ -748,19 +821,19 @@ class Forum_Controller extends Page_Controller
         $member->write();
 
         // Log event
-        $currentUser = Member::currentUser();
-        SS_Log::log(sprintf(
+        $currentUser = Security::getCurrentUser();
+        Injector::inst()->get(LoggerInterface::class)->info(sprintf(
             'Banned member %s (#%d), by moderator %s (#%d)',
             $member->Email,
             $member->ID,
             $currentUser->Email,
             $currentUser->ID
-        ), SS_Log::NOTICE);
+        ));
 
         return ($r->isAjax()) ? true : $this->redirectBack();
     }
 
-    public function ghost(SS_HTTPRequest $r)
+    public function ghost(HTTPRequest $r)
     {
         if (!$r->param('ID')) {
             return $this->httpError(400);
@@ -778,14 +851,14 @@ class Forum_Controller extends Page_Controller
         $member->write();
 
         // Log event
-        $currentUser = Member::currentUser();
-        SS_Log::log(sprintf(
+        $currentUser = Security::getCurrentUser();
+        Injector::inst()->get(LoggerInterface::class)->info(sprintf(
             'Ghosted member %s (#%d), by moderator %s (#%d)',
             $member->Email,
             $member->ID,
             $currentUser->Email,
             $currentUser->ID
-        ), SS_Log::NOTICE);
+        ));
 
         return ($r->isAjax()) ? true : $this->redirectBack();
     }
@@ -817,7 +890,7 @@ class Forum_Controller extends Page_Controller
             $_GET['start'] = 0;
         }
 
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
 
         /*
 		 * Don't show posts of banned or ghost members, unless current Member
@@ -852,7 +925,8 @@ class Forum_Controller extends Page_Controller
      */
     public function BBTags()
     {
-        return BBCodeParser::usable_tags();
+       return ForumBBCodeParser::usable_tags();
+
     }
 
     /**
@@ -867,7 +941,7 @@ class Forum_Controller extends Page_Controller
         if ($post) {
             $thread = $post->Thread();
         } elseif (isset($this->urlParams['ID']) && is_numeric($this->urlParams['ID'])) {
-            $thread = DataObject::get_by_id('ForumThread', $this->urlParams['ID']);
+            $thread = DataObject::get_by_id(ForumThread::class, $this->urlParams['ID']);
         }
 
         // Check permissions
@@ -899,10 +973,10 @@ class Forum_Controller extends Page_Controller
             return false;
         }
 
-        $forumBBCodeHint = $this->renderWith('Forum_BBCodeHint');
+        $forumBBCodeHint = $this->renderWith('SilverStripe\Forum\Includes\Forum_BBCodeHint');
 
         $fields = new FieldList(
-            ($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title', _t('Forum.FORUMTHREADTITLE', ''), 'Re:'. $thread->Title),
+            ($post && $post->isFirstPost() || !$thread) ? new TextField("Title", _t('Forum.FORUMTHREADTITLE', 'Title')) : new ReadonlyField('Title', _t('Forum.FORUMTHREADTITLE', 'Title'), 'Re:'. $thread->Title),
             new TextareaField("Content", _t('Forum.FORUMREPLYCONTENT', 'Content')),
             new LiteralField(
                 "BBCodeHelper",
@@ -994,7 +1068,7 @@ class Forum_Controller extends Page_Controller
      */
     public function doPostMessageForm($data, $form)
     {
-        $member = Member::currentUser();
+        $member = Security::getCurrentUser();
 
         //Allows interception of a Member posting content to perform some action before the post is made.
         $this->extend('beforePostMessage', $data, $member);
@@ -1006,14 +1080,14 @@ class Forum_Controller extends Page_Controller
         // a new thread
         $thread = false;
         if (isset($data['ThreadID'])) {
-            $thread = DataObject::get_by_id('ForumThread', $data['ThreadID']);
+            $thread = DataObject::get_by_id(ForumThread::class, $data['ThreadID']);
         }
 
         // If this is a simple edit the post then handle it here. Look up the correct post,
         // make sure we have edit rights to it then update the post
         $post = false;
         if (isset($data['ID'])) {
-            $post = DataObject::get_by_id('Post', $data['ID']);
+            $post = DataObject::get_by_id(Post::class, $data['ID']);
 
             if ($post && $post->isFirstPost()) {
                 if ($title) {
@@ -1067,12 +1141,13 @@ class Forum_Controller extends Page_Controller
             //
             // @todo this only supports ajax uploads. Needs to change the key (to simply Attachment).
             //
+            $session =  $this->getRequest()->getSession();
             while (isset($data['Attachment-' . $id])) {
                 $image = $data['Attachment-' . $id];
 
                 if ($image && !empty($image['tmp_name'])) {
                     $file = Post_Attachment::create();
-                    $file->OwnerID = Member::currentUserID();
+                    $file->OwnerID = Security::getCurrentUser() ? Security::getCurrentUser()->ID : '0';
                     $folder = Config::inst()->get('ForumHolder', 'attachments_folder');
 
                     try {
@@ -1084,7 +1159,7 @@ class Forum_Controller extends Page_Controller
                         $message .= implode(', ', Config::inst()->get('File', 'allowed_extensions'));
                         $form->addErrorMessage('Attachment', $message, 'bad');
 
-                        Session::set("FormInfo.Form_PostMessageForm.data", $data);
+                        $session->set("FormInfo.Form_PostMessageForm.data", $data);
 
                         return $this->redirectBack();
                     }
@@ -1233,7 +1308,7 @@ class Forum_Controller extends Page_Controller
             //If there is not first post either the thread has been removed or thread if a banned spammer.
             if (!$thread->getFirstPost()) {
                 // don't hide the post for logged in admins or moderators
-                $member = Member::currentUser();
+                $member = Security::getCurrentUser();
                 if (!$this->canModerate($member)) {
                     return $this->httpError(404);
                 }
@@ -1274,7 +1349,7 @@ class Forum_Controller extends Page_Controller
     {
         $topic = array(
             'Subtitle' => DBField::create_field('HTMLText', _t('Forum.NEWTOPIC', 'Start a new topic')),
-            'Abstract' => DBField::create_field('HTMLText', DataObject::get_one("ForumHolder")->ForumAbstract)
+            'Abstract' => DBField::create_field('HTMLText', DataObject::get_one(ForumHolder::class)->ForumAbstract)
         );
         return $topic;
     }
@@ -1300,7 +1375,7 @@ class Forum_Controller extends Page_Controller
             $SQL_id = Convert::raw2sql($this->urlParams['ID']);
 
             if (is_numeric($SQL_id)) {
-                if ($thread = DataObject::get_by_id('ForumThread', $SQL_id)) {
+                if ($thread = DataObject::get_by_id(ForumThread::class, $SQL_id)) {
                     if (!$thread->canView()) {
                         Security::permissionFailure($this);
 
@@ -1321,7 +1396,7 @@ class Forum_Controller extends Page_Controller
      *
      * @return boolean
      */
-    public function deleteattachment(SS_HTTPRequest $request)
+    public function deleteattachment(HTTPRequest  $request)
     {
         // Check CSRF token
         if (!SecurityToken::inst()->checkRequest($request)) {
@@ -1333,7 +1408,7 @@ class Forum_Controller extends Page_Controller
             return false;
         }
 
-        $file = DataObject::get_by_id("Post_Attachment", (int) $this->urlParams['ID']);
+        $file = DataObject::get_by_id(Post_Attachment::class, (int) $this->urlParams['ID']);
 
         if ($file && $file->canDelete()) {
             $file->delete();
@@ -1364,7 +1439,7 @@ class Forum_Controller extends Page_Controller
     public function EditForm()
     {
         $id = (isset($this->urlParams['ID'])) ? $this->urlParams['ID'] : null;
-        $post = DataObject::get_by_id('Post', $id);
+        $post = DataObject::get_by_id(Post::class, $id);
 
         return $this->PostMessageForm(false, $post);
     }
@@ -1375,7 +1450,7 @@ class Forum_Controller extends Page_Controller
      *
      * @return bool
      */
-    public function deletepost(SS_HTTPRequest $request)
+    public function deletepost(HTTPRequest $request)
     {
         // Check CSRF token
         if (!SecurityToken::inst()->checkRequest($request)) {
@@ -1383,12 +1458,12 @@ class Forum_Controller extends Page_Controller
         }
 
         if (isset($this->urlParams['ID'])) {
-            if ($post = DataObject::get_by_id('Post', (int) $this->urlParams['ID'])) {
+            if ($post = DataObject::get_by_id(Post::class, (int) $this->urlParams['ID'])) {
                 if ($post->canDelete()) {
                     // delete the whole thread if this is the first one. The delete action
                     // on thread takes care of the posts.
                     if ($post->isFirstPost()) {
-                        $thread = DataObject::get_by_id("ForumThread", $post->ThreadID);
+                        $thread = DataObject::get_by_id(ForumThread::class, $post->ThreadID);
                         $thread->delete();
                     } else {
                         // delete the post
@@ -1408,8 +1483,9 @@ class Forum_Controller extends Page_Controller
      */
     public function ForumAdminMsg()
     {
-        $message = Session::get('ForumAdminMsg');
-        Session::clear('ForumAdminMsg');
+        $session = $this->getRequest()->getSession();
+        $message = $session->get('ForumAdminMsg');
+        $session->clear('ForumAdminMsg');
 
         return $message;
     }
@@ -1478,6 +1554,65 @@ class Forum_Controller extends Page_Controller
         }
 
         return $this->redirect($this->Link());
+    }
+
+
+
+    /**
+     * The search action
+     *
+     * @return array Returns an array to render the search results.
+     */
+    public function search()
+    {
+        $keywords   = (isset($_REQUEST['Search'])) ? Convert::raw2xml($_REQUEST['Search']) : null;
+        $order      = (isset($_REQUEST['order'])) ? Convert::raw2xml($_REQUEST['order']) : null;
+        $start      = (isset($_REQUEST['start'])) ? (int) $_REQUEST['start'] : 0;
+
+        $abstract = ($keywords) ? "<p>" . sprintf(_t('ForumHolder.SEARCHEDFOR', "You searched for '%s'."), $keywords) . "</p>": null;
+
+        // get the results of the query from the current search engine
+        $search = ForumSearch::get_search_engine();
+
+        if ($search) {
+            $engine = new $search();
+
+            $results = $engine->getResults($this->ParentID, $keywords, $order, $start);
+        } else {
+            $results = false;
+        }
+
+        if($results)
+            $results = $results->filter('ForumID' , $this->ID);
+
+
+        //Paginate the results
+        $results = PaginatedList::create(
+            $results,
+            $this->request->getVars()
+        );
+
+
+        // if the user has requested this search as an RSS feed then output the contents as xml
+        // rather than passing it to the template
+        if (isset($_REQUEST['rss'])) {
+            $rss = new RSSFeed($results, $this->Link(), _t('ForumHolder.SEARCHRESULTS', 'Search results'), "", "Title", "RSSContent", "RSSAuthor");
+
+            return $rss->outputToBrowser();
+        }
+
+        // attach a link to a RSS feed version of the search results
+        $rssLink = $this->Link() ."search/?Search=".urlencode($keywords). "&amp;order=".urlencode($order)."&amp;rss";
+        RSSFeed::linkToFeed($rssLink, _t('ForumHolder.SEARCHRESULTS', 'Search results'));
+
+        return $this->renderWith([ForumHolder::class. '_search', 'Page'], array(
+            "Subtitle"      => DBField::create_field('Text', _t('ForumHolder.SEARCHRESULTS', 'Search results')),
+            "Abstract"      => DBField::create_field('HTMLText', $abstract),
+            "Query"             => DBField::create_field('Text', $_REQUEST['Search']),
+            "Order"             => DBField::create_field('Text', ($order) ? $order : "relevance"),
+            "RSSLink"       => DBField::create_field('HTMLText', $rssLink),
+            "SearchResults"     => $results
+        ));
     }
 }
 
