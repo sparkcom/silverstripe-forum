@@ -503,7 +503,7 @@ class Forum extends \Page
      * @return DataList
      */
     public function getTopics()
-    { die('benben');
+    { 
         // Get a list of Posts
         $posts = Post::get();
 
